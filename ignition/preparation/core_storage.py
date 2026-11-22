@@ -32,12 +32,12 @@ class CoreStorage:
 
     # Above 2-6 TiB on Linux, where PyTorch's mimalloc CPU allocator places its 1 GiB arenas;
     # a peer rank allocates CPU tensors before it reserves these ranges.
-    DEVICE_BASE = 0x40000000000 if os.name == "nt" else 0x80000000000
+    DEVICE_BASE = 0x4000000000
     # The native allocator selects a higher base when the device ranks need this range.
     HOST_BASE = 0xc0000000000
-    RESERVATION_BYTES = 1 << 40
+    RESERVATION_BYTES = 1 << 37
     # Each rank's host range; independent of an explicit device window.
-    HOST_RESERVATION_BYTES = 1 << 40
+    HOST_RESERVATION_BYTES = 1 << 37
     # Keep library-owned device storage above the ranges occupied by Linux and WDDM contexts.
     EXTERNAL_FLOOR = 0x4000000000
     # Where sealing below the floor starts; a context's own storage lies above it.
@@ -611,7 +611,7 @@ class DeviceRegion:
         cuda, device = self.cuda, self.device
         address, size = self.address + self.nbytes, nbytes - self.nbytes
         handle = C.c_uint64()
-        properties = _Properties(1, 0 if os.name == "nt" else 1, _Location(1, device), None,
+        properties = _Properties(1, 0, _Location(1, device), None,
                                  (C.c_ubyte * 8)(0, int(self.gpudirect), 0, 0, 0, 0, 0, 0))
         cuda.call("cuMemCreate", C.byref(handle), C.c_size_t(size), C.byref(properties), C.c_uint64(0))
         mapped = False
