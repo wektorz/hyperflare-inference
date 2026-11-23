@@ -11,8 +11,57 @@ import math
 import json
 import mmap
 import os
+import platform
+from functools import lru_cache
 
 from .runtime_core import _Cuda
+
+_IS_WINDOWS_OR_WSL = (
+    os.name == "nt" or "microsoft" in platform.uname().release.lower()
+)
+
+
+@lru_cache(maxsize=1)
+def _default_reservation_shift() -> int:
+    if not _IS_WINDOWS_OR_WSL:
+        return 40  # Native Linux: 1 TiB
+    try:
+        if os.name != "nt":
+            # WSL: read /proc/meminfo directly (~0.05 ms, no Windows .exe calls)
+            with open("/proc/meminfo") as f:
+                mem_kb = int(
+                    next(
+                        line.split()[1]
+                        for line in f
+                        if line.startswith("MemTotal:")
+                    )
+                )
+            ram_gb = (mem_kb / (1024**2)) * 2  # WSL2 defaults to 50% of host RAM
+
+        else:
+            # Native Windows: Win32 API (works on Win 10, Win 11, Server — no wmic/powershell)
+            class MEMORYSTATUSEX(C.Structure):
+                _fields_ = [
+                    ("dwLength", C.c_ulong),
+                    ("dwMemoryLoad", C.c_ulong),
+                    ("ullTotalPhys", C.c_ulonglong),
+                    ("ullAvailPhys", C.c_ulonglong),
+                    ("ullTotalPageFile", C.c_ulonglong),
+                    ("ullAvailPageFile", C.c_ulonglong),
+                    ("ullTotalVirtual", C.c_ulonglong),
+                    ("ullAvailVirtual", C.c_ulonglong),
+                    ("ullAvailExtendedVirtual", C.c_ulonglong),
+                ]
+
+            stat = MEMORYSTATUSEX(dwLength=C.sizeof(MEMORYSTATUSEX))
+            if not C.windll.kernel32.GlobalMemoryStatusEx(C.byref(stat)):
+                raise OSError("GlobalMemoryStatusEx failed")
+            ram_gb = stat.ullTotalPhys / (1024**3)
+
+        shift = int(math.log2(max(ram_gb, 1))) + 32
+        return max(36, min(40, shift))
+    except Exception:
+        return 36
 
 
 @dataclass
@@ -32,12 +81,12 @@ class CoreStorage:
 
     # Above 2-6 TiB on Linux, where PyTorch's mimalloc CPU allocator places its 1 GiB arenas;
     # a peer rank allocates CPU tensors before it reserves these ranges.
-    DEVICE_BASE = 0x4000000000
+    DEVICE_BASE =  0x40000000000 if _IS_WINDOWS_OR_WSL else 0x80000000000
     # The native allocator selects a higher base when the device ranks need this range.
     HOST_BASE = 0xc0000000000
-    RESERVATION_BYTES = 1 << 37
+    RESERVATION_BYTES = 1 << _default_reservation_shift()
     # Each rank's host range; independent of an explicit device window.
-    HOST_RESERVATION_BYTES = 1 << 37
+    HOST_RESERVATION_BYTES = 1 << _default_reservation_shift()
     # Keep library-owned device storage above the ranges occupied by Linux and WDDM contexts.
     EXTERNAL_FLOOR = 0x4000000000
     # Where sealing below the floor starts; a context's own storage lies above it.
@@ -611,7 +660,7 @@ class DeviceRegion:
         cuda, device = self.cuda, self.device
         address, size = self.address + self.nbytes, nbytes - self.nbytes
         handle = C.c_uint64()
-        properties = _Properties(1, 0, _Location(1, device), None,
+        properties = _Properties(1, 0 if _IS_WINDOWS_OR_WSL else 1, _Location(1, device), None,
                                  (C.c_ubyte * 8)(0, int(self.gpudirect), 0, 0, 0, 0, 0, 0))
         cuda.call("cuMemCreate", C.byref(handle), C.c_size_t(size), C.byref(properties), C.c_uint64(0))
         mapped = False
