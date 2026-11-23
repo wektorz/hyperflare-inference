@@ -13,6 +13,9 @@ import mmap
 import os
 import platform
 from functools import lru_cache
+import re
+import subprocess
+import sys
 
 from .runtime_core import _Cuda
 
@@ -64,6 +67,33 @@ def _default_reservation_shift() -> int:
         return 36
 
 
+
+@lru_cache(maxsize=1)
+def _is_win10_or_wsl_win10() -> bool:
+    if os.name == "nt":
+        return sys.getwindowsversion().build < 22000
+    if "microsoft" not in platform.uname().release.lower():
+        return False
+    # WSL2: check Windows host build via cmd.exe (cached once at import/startup)
+    try:
+        out = subprocess.check_output(
+            ["cmd.exe", "/c", "ver"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=2,
+        )
+        # Example output: "Microsoft Windows [Version 10.0.19045.5131]"
+        m = re.search(r"\b10\.0\.(\d+)\b", out)
+        if m:
+            return int(m.group(1)) < 22000
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return False
+
+
+
+
+
 @dataclass
 class Mapping:
     address: int
@@ -81,7 +111,15 @@ class CoreStorage:
 
     # Above 2-6 TiB on Linux, where PyTorch's mimalloc CPU allocator places its 1 GiB arenas;
     # a peer rank allocates CPU tensors before it reserves these ranges.
-    DEVICE_BASE =  0x40000000000 if _IS_WINDOWS_OR_WSL else 0x80000000000
+    # Windows 11 WDDM and native Linux support higher bases (4 TiB / 8 TiB).
+    # Windows 10 WDDM caps GPU virtual addresses at 40 bits (1 TiB), so keep DEVICE_BASE at 256 GiB.
+    DEVICE_BASE = (
+        0x4000000000
+        if _is_win10_or_wsl_win10()
+        else (0x40000000000 if _IS_WINDOWS_OR_WSL else 0x80000000000)
+    )
+
+
     # The native allocator selects a higher base when the device ranks need this range.
     HOST_BASE = 0xc0000000000
     RESERVATION_BYTES = 1 << _default_reservation_shift()
