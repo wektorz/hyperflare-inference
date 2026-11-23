@@ -36,7 +36,7 @@ def _default_reservation_shift() -> int:
                         if line.startswith("MemTotal:")
                     )
                 )
-            ram_gb = (mem_kb / (1024**2)) * 2  # WSL2 defaults to 50% of host RAM
+            ram_gb = (mem_kb / (1024**2))
 
         else:
             # Native Windows: Win32 API (works on Win 10, Win 11, Server — no wmic/powershell)
@@ -60,7 +60,7 @@ def _default_reservation_shift() -> int:
 
         shift = int(math.log2(max(ram_gb, 1))) + 32
         return max(36, min(40, shift))
-    except Exception:
+    except (OSError, ValueError, StopIteration):
         return 36
 
 
@@ -81,7 +81,7 @@ class CoreStorage:
 
     # Above 2-6 TiB on Linux, where PyTorch's mimalloc CPU allocator places its 1 GiB arenas;
     # a peer rank allocates CPU tensors before it reserves these ranges.
-    DEVICE_BASE =  0x4000000000 if _IS_WINDOWS_OR_WSL else 0x8000000000
+    DEVICE_BASE =  0x40000000000 if _IS_WINDOWS_OR_WSL else 0x80000000000
     # The native allocator selects a higher base when the device ranks need this range.
     HOST_BASE = 0xc0000000000
     RESERVATION_BYTES = 1 << _default_reservation_shift()

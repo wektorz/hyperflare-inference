@@ -47,7 +47,7 @@ pub fn platform_from_pci(pci_id: u32) -> Option<&'static str> {
     if GA102_DEVICES.contains(&device) {
         return Some("ga102");
     }
-    if (GB206_DEVICES.contains(&device)) {
+    if GB206_DEVICES.contains(&device) {
         return Some("gb206")
     }
     GB202_DEVICES.contains(&device).then_some("gb202")
