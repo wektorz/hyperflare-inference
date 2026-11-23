@@ -39,8 +39,7 @@ def _default_reservation_shift() -> int:
                         if line.startswith("MemTotal:")
                     )
                 )
-            ram_gb = (mem_kb / (1024**2))
-
+            ram_gb = mem_kb / (1024**2)
         else:
             # Native Windows: Win32 API (works on Win 10, Win 11, Server — no wmic/powershell)
             class MEMORYSTATUSEX(C.Structure):
@@ -62,9 +61,9 @@ def _default_reservation_shift() -> int:
             ram_gb = stat.ullTotalPhys / (1024**3)
 
         shift = int(math.log2(max(ram_gb, 1))) + 32
-        return max(36, min(40, shift))
+        return max(38, min(40, shift))
     except (OSError, ValueError, StopIteration):
-        return 36
+        return 38
 
 
 
