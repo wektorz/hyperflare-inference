@@ -81,7 +81,7 @@ class CoreStorage:
 
     # Above 2-6 TiB on Linux, where PyTorch's mimalloc CPU allocator places its 1 GiB arenas;
     # a peer rank allocates CPU tensors before it reserves these ranges.
-    DEVICE_BASE =  0x40000000000 if _IS_WINDOWS_OR_WSL else 0x80000000000
+    DEVICE_BASE =  0x4000000000 if _IS_WINDOWS_OR_WSL else 0x8000000000
     # The native allocator selects a higher base when the device ranks need this range.
     HOST_BASE = 0xc0000000000
     RESERVATION_BYTES = 1 << _default_reservation_shift()
