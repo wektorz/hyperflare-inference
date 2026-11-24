@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Platforms a core may be named for. These are the NVIDIA device
 /// identifiers Flare already uses for revisions, not SM architecture names.
-pub const PLATFORMS: [&str; 4] = ["ga102", "gb10", "gb202", "gb300"];
+pub const PLATFORMS: [&str; 5] = ["ga102", "gb10", "gb202","gb206", "gb300"];
 
 /// Platform for one NVIDIA PCI id in NVML's `device<<16 | vendor` layout.
 ///
@@ -20,6 +20,10 @@ pub const PLATFORMS: [&str; 4] = ["ga102", "gb10", "gb202", "gb300"];
 /// core export naming; do not duplicate the identifiers elsewhere.
 pub const GB202_DEVICES: [u32; 9] = [
     0x2b85, 0x2b87, 0x2b8c, 0x2bb1, 0x2bb2, 0x2bb3, 0x2bb4, 0x2bb5, 0x2bb9,
+];
+
+pub const GB206_DEVICES: [u32; 9] = [
+    0x2d04, 0x2d05, 0x2d18, 0x2d19, 0x2d30, 0x2d39, 0x2d58, 0x2d59, 0x2d79,
 ];
 
 /// GB10 and RTX Spark N1X device identifiers for the SM121 platform.
@@ -45,6 +49,9 @@ pub fn platform_from_pci(pci_id: u32) -> Option<&'static str> {
     }
     if GA102_DEVICES.contains(&device) {
         return Some("ga102");
+    }
+    if GB206_DEVICES.contains(&device) {
+        return Some("gb206")
     }
     GB202_DEVICES.contains(&device).then_some("gb202")
 }
@@ -190,6 +197,13 @@ mod tests {
             assert_eq!(
                 platform_from_pci(device << 16 | 0x10de),
                 Some("gb202"),
+                "{device:#06x}"
+            );
+        }
+        for device in GB206_DEVICES {
+            assert_eq!(
+                platform_from_pci(device << 16 | 0x10de),
+                Some("gb206"),
                 "{device:#06x}"
             );
         }
